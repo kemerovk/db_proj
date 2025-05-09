@@ -1,0 +1,3 @@
+db.url=host?schema
+db.user=user
+db.pass=pass
