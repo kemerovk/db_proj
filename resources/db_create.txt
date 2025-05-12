@@ -1,0 +1,104 @@
+create table academic_domain(
+    domain_id int primary key generated always as identity,
+    domain_name text not null unique
+);
+
+create table faculty(
+    faculty_id int primary key generated always as identity,
+    faculty_name text not null unique,
+    domain int references academic_domain (domain_id)
+);
+
+create table "group"(
+    group_id int primary key generated always as identity,
+    faculty int not null references faculty(faculty_id),
+    group_number int not null default 1,
+    academic_year int not null default 1,
+    unique (faculty, group_number)
+);
+
+create table student(
+    student_id int primary key generated always as identity,
+    first_name text not null,
+    last_name text not null,
+    middle_name text,
+    group_id int references "group" (group_id)
+);
+
+create table subject (
+    subject_id int primary key generated always as identity,
+    subject_name text not null unique,
+    academic_domain int references academic_domain (domain_id)
+);
+
+create table teacher(
+    teacher_id int primary key generated always as identity,
+    first_name text not null,
+    last_name text not null,
+    middle_name text,
+    academic_domain int references academic_domain (domain_id)
+);
+
+alter table teacher
+add constraint unique_teacher
+    unique (first_name, last_name, middle_name, academic_domain);
+
+
+create table faculty_subject (
+     id int primary key generated always as identity,
+     faculty_id int references faculty (faculty_id),
+     subject_id int references subject (subject_id),
+     unique (faculty_id, subject_id)
+);
+
+create table teacher_subject (
+    id int primary key generated always as identity,
+    teacher_id int references teacher (teacher_id),
+    subject_id int references subject (subject_id),
+    unique (teacher_id, subject_id)
+);
+
+create table pair_time(
+    id int primary key generated always as identity,
+    start_time time not null unique,
+    end_time time not null unique
+);
+
+create table schedule (
+    schedule_id int primary key generated always as identity,
+    group_id int references "group" (group_id),
+    subject_id int references subject (subject_id),
+    teacher_id int references teacher (teacher_id),
+    day_of_week int not null check (day_of_week between 1 and 6),
+    pair_number int not null check (pair_number between 1 and 6)
+                      references pair_time(id),
+    unique (group_id, subject_id, teacher_id, day_of_week, pair_number)
+);
+
+create table grades (
+    grade_id int primary key generated always as identity,
+    student_id int references student (student_id),
+    schedule_id int references schedule (schedule_id),
+    grade int,
+    date_assigned date not null,
+    unique (student_id, schedule_id)
+);
+
+create table users (
+    user_id int primary key generated always as identity,
+    login text not null,
+    password text not null,
+    role int check (role <= 3 and role >= 1)
+);
+
+create table student_user (
+    id int primary key generated always as identity,
+    user_id int unique references users(user_id) on delete cascade,
+    student_id int references student(student_id) on delete cascade
+);
+
+create table teacher_user (
+    id int primary key generated always as identity
+    user_id int unique references users(user_id) on delete cascade,
+    teacher_id int unique references teacher(teacher_id) on delete cascade
+);

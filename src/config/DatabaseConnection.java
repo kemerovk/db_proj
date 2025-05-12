@@ -9,10 +9,11 @@ import java.util.Properties;
 public class DatabaseConnection {
 
     public static Connection getConnection() {
-        try (FileInputStream read = new FileInputStream(new File("application.properties"))){
+        try (FileInputStream read = new FileInputStream(new File("resources/application.properties"))){
             Properties prop = new Properties();
             prop.load(read);
 
+            System.out.println("ok");
             return DriverManager.getConnection(prop.getProperty("db.url"),
                                                prop.getProperty("db.user"),
                                                prop.getProperty("db.pass"));
