@@ -15,7 +15,9 @@ import java.util.Map;
 import static scene.UsersScene.*;
 import static service.Group.*;
 import static service.Student.createStudent;
+import static service.Student.getStudentIdByName;
 import static service.Teacher.createTeacher;
+import static service.Teacher.getTeacherIdByName;
 import static service.User.*;
 
 public class AuthScene {
@@ -176,6 +178,39 @@ public class AuthScene {
     }
 
     public static void showAdminSceneWithGroupCreation(Stage primaryStage, Connection conn) {
+        // Основной контейнер с вкладками
+        TabPane tabPane = new TabPane();
+
+        // Вкладка для создания группы
+        Tab createGroupTab = new Tab("Создание группы");
+        createGroupTab.setClosable(false); // Отключаем возможность закрытия вкладки
+        VBox createGroupBox = createGroupTabContent(conn);
+        createGroupTab.setContent(createGroupBox);
+
+        // Вкладка для назначения студентов
+        Tab studentAssignmentTab = new Tab("Назначение студентов");
+        studentAssignmentTab.setClosable(false); // Отключаем возможность закрытия вкладки
+        VBox studentAssignmentBox = createStudentAssignmentTabContent(conn);
+        studentAssignmentTab.setContent(studentAssignmentBox);
+
+        // Вкладка для назначения преподавателей
+        Tab teacherAssignmentTab = new Tab("Назначение преподавателей");
+        teacherAssignmentTab.setClosable(false); // Отключаем возможность закрытия вкладки
+        VBox teacherAssignmentBox = createTeacherAssignmentTabContent(conn);
+        teacherAssignmentTab.setContent(teacherAssignmentBox);
+
+        // Добавление вкладок в TabPane
+        tabPane.getTabs().addAll(createGroupTab, studentAssignmentTab, teacherAssignmentTab);
+
+        // Устанавливаем начальную вкладку
+        tabPane.getSelectionModel().select(0); // Выбираем вкладку "Создание группы" по умолчанию
+
+        // Устанавливаем сцену с TabPane
+        primaryStage.setScene(new Scene(tabPane, 800, 600));
+    }
+
+    // Метод для создания контента вкладки "Создание группы"
+    private static VBox createGroupTabContent(Connection conn) {
         VBox root = new VBox(10);
         root.setPadding(new Insets(20));
 
@@ -247,7 +282,6 @@ public class AuthScene {
                 stmt.executeUpdate();
                 createStatus.setText("Группа " + nextNumber + " создана.");
                 facultyBox.fireEvent(new ActionEvent()); // обновить nextGroupNumberLabel
-                updateStudentAssignmentSection(root, conn); // обновить студентов
             } catch (SQLException ex) {
                 createStatus.setText("Ошибка создания группы: " + ex.getMessage());
             }
@@ -260,10 +294,134 @@ public class AuthScene {
 
         root.getChildren().add(createGroupBox);
 
-        // Нижняя часть – назначение студентов
-        updateStudentAssignmentSection(root, conn);
+        return root;
+    }
 
-        primaryStage.setScene(new Scene(root, 600, 700));
+    // Метод для создания контента вкладки "Назначение студентов"
+    private static VBox createStudentAssignmentTabContent(Connection conn) {
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(20));
+
+        Label title = new Label("Назначение студентов на группы");
+
+        ComboBox<String> studentGroupBox = new ComboBox<>();
+        // Загрузка студентов для назначения
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT student_id, first_name, last_name FROM student")) {
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                studentGroupBox.getItems().add(rs.getString("first_name") + " " + rs.getString("last_name"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        ComboBox<String> groupBox = new ComboBox<>();
+        // Загрузка групп для назначения
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT group_number FROM \"group\"")) {
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                groupBox.getItems().add("Группа " + rs.getInt("group_number"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        Button assignStudentButton = new Button("Назначить студента в группу");
+        Label studentAssignmentStatus = new Label();
+
+        assignStudentButton.setOnAction(e -> {
+            String selectedStudent = studentGroupBox.getValue();
+            String selectedGroup = groupBox.getValue();
+
+            if (selectedStudent == null || selectedGroup == null) {
+                studentAssignmentStatus.setText("Выберите студента и группу.");
+                return;
+            }
+
+            try {
+                // Получаем id студента
+                int studentId = getStudentIdByName(selectedStudent, conn);
+
+                // Получаем номер группы
+                int groupNumber = Integer.parseInt(selectedGroup.split(" ")[1]);
+
+                // Назначаем студента в группу
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "UPDATE student SET group_id = (SELECT group_id FROM \"group\" WHERE group_number = ?) WHERE student_id = ?")) {
+                    stmt.setInt(1, groupNumber);
+                    stmt.setInt(2, studentId);
+                    stmt.executeUpdate();
+                    studentAssignmentStatus.setText("Студент успешно назначен в группу " + groupNumber);
+                }
+            } catch (SQLException ex) {
+                studentAssignmentStatus.setText("Ошибка назначения студента: " + ex.getMessage());
+            }
+        });
+
+        root.getChildren().addAll(title, studentGroupBox, groupBox, assignStudentButton, studentAssignmentStatus);
+        return root;
+    }
+
+    // Метод для создания контента вкладки "Назначение преподавателей"
+    private static VBox createTeacherAssignmentTabContent(Connection conn) {
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(20));
+
+        Label title = new Label("Назначение преподавателей на предметы");
+
+        ComboBox<String> teacherBox = new ComboBox<>();
+        // Загрузка преподавателей
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT teacher_id, first_name, last_name FROM teacher")) {
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                teacherBox.getItems().add(rs.getString("first_name") + " " + rs.getString("last_name"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        ComboBox<String> subjectBox = new ComboBox<>();
+        // Загрузка предметов
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT subject_name FROM subject")) {
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                subjectBox.getItems().add(rs.getString("subject_name"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        Button assignTeacherButton = new Button("Назначить преподавателя на предмет");
+        Label teacherAssignmentStatus = new Label();
+
+        assignTeacherButton.setOnAction(e -> {
+            String selectedTeacher = teacherBox.getValue();
+            String selectedSubject = subjectBox.getValue();
+
+            if (selectedTeacher == null || selectedSubject == null) {
+                teacherAssignmentStatus.setText("Выберите преподавателя и предмет.");
+                return;
+            }
+
+            try {
+                // Получаем id преподавателя
+                int teacherId = getTeacherIdByName(selectedTeacher, conn);
+
+                // Назначаем преподавателя на предмет
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "INSERT INTO teacher_subject (teacher_id, subject_id) VALUES (?, (SELECT subject_id FROM subject WHERE subject_name = ?))")) {
+                    stmt.setInt(1, teacherId);
+                    stmt.setString(2, selectedSubject);
+                    stmt.executeUpdate();
+                    teacherAssignmentStatus.setText("Преподаватель успешно назначен на предмет: " + selectedSubject);
+                }
+            } catch (SQLException ex) {
+                teacherAssignmentStatus.setText("Ошибка назначения преподавателя: " + ex.getMessage());
+            }
+        });
+
+        root.getChildren().addAll(title, teacherBox, subjectBox, assignTeacherButton, teacherAssignmentStatus);
+        return root;
     }
 
 }

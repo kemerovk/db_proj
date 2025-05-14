@@ -11,7 +11,9 @@ import javafx.stage.Stage;
 import scene.AuthScene;
 
 import java.sql.*;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class Group {
@@ -154,5 +156,78 @@ public class Group {
         root.getChildren().add(assignSection);
     }
 
+    public static void updateTeacherAssignmentSection(VBox root, Connection conn) {
+        // Удаляем предыдущую секцию, если она была
+        ObservableList<Node> children = root.getChildren();
+        children.removeIf(node -> node.getUserData() != null && node.getUserData().equals("assignTeacherSection"));
 
+        VBox assignSection = new VBox(10);
+        assignSection.setUserData("assignTeacherSection");
+
+        Label title = new Label("Назначение преподавателей на предметы");
+
+        VBox teacherBox = new VBox(5);
+        Map<Integer, ComboBox<String>> teacherSubjectBoxes = new HashMap<>();
+        Map<String, Integer> subjectNameToIdMap = new HashMap<>();
+
+        try (PreparedStatement teacherStmt = conn.prepareStatement("SELECT teacher_id, first_name, last_name FROM teacher");
+             PreparedStatement subjectStmt = conn.prepareStatement("SELECT subject_id, subject.subject_name FROM subject")) {
+
+            ResultSet subjectRs = subjectStmt.executeQuery();
+            List<String> subjectNames = new ArrayList<>();
+            while (subjectRs.next()) {
+                int sid = subjectRs.getInt("subject_id");
+                String name = subjectRs.getString("subject_name");
+                subjectNames.add(name);
+                subjectNameToIdMap.put(name, sid);
+            }
+
+            ResultSet teacherRs = teacherStmt.executeQuery();
+            while (teacherRs.next()) {
+                int teacherId = teacherRs.getInt("teacher_id");
+                String name = teacherRs.getString("last_name") + " " + teacherRs.getString("first_name");
+
+                HBox row = new HBox(10);
+                Label nameLabel = new Label(name);
+
+                ComboBox<String> subjectBox = new ComboBox<>();
+                subjectBox.getItems().addAll(subjectNames);
+
+                teacherSubjectBoxes.put(teacherId, subjectBox);
+                row.getChildren().addAll(nameLabel, subjectBox);
+                teacherBox.getChildren().add(row);
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        Button assignButton = new Button("Назначить преподавателей");
+        Label statusLabel = new Label();
+
+        assignButton.setOnAction(e -> {
+            boolean assigned = false;
+            for (Map.Entry<Integer, ComboBox<String>> entry : teacherSubjectBoxes.entrySet()) {
+                int teacherId = entry.getKey();
+                String subjectName = entry.getValue().getValue();
+                if (subjectName != null) {
+                    int subjectId = subjectNameToIdMap.get(subjectName);
+                    try (PreparedStatement stmt = conn.prepareStatement(
+                            "INSERT INTO teacher_subject (teacher_id, subject_id) VALUES (?, ?) ON CONFLICT DO NOTHING")) {
+                        stmt.setInt(1, teacherId);
+                        stmt.setInt(2, subjectId);
+                        stmt.executeUpdate();
+                        assigned = true;
+                    } catch (SQLException ex) {
+                        ex.printStackTrace();
+                    }
+                }
+            }
+
+            statusLabel.setText(assigned ? "✅ Преподаватели назначены на предметы" : "⚠️ Ничего не выбрано для назначения");
+        });
+
+        assignSection.getChildren().addAll(title, teacherBox, assignButton, statusLabel);
+        root.getChildren().add(assignSection);
+    }
 }

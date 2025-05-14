@@ -14,4 +14,20 @@ public class Teacher {
             throw new SQLException("Не удалось создать преподавателя");
         }
     }
+
+    public static int getTeacherIdByName(String fullName, Connection conn) throws SQLException {
+        String[] names = fullName.split(" ");
+        String query = "SELECT teacher_id FROM teacher WHERE first_name = ? AND last_name = ?";
+
+        try (PreparedStatement stmt = conn.prepareStatement(query)) {
+            stmt.setString(1, names[0]);
+            stmt.setString(2, names[1]);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt("teacher_id");
+            }
+        }
+
+        return -1; // Преподаватель не найден
+    }
 }

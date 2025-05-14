@@ -15,4 +15,20 @@ public class Student {
             throw new SQLException("Не удалось создать студента");
         }
     }
+
+    public static int getStudentIdByName(String fullName, Connection conn) throws SQLException {
+        String[] names = fullName.split(" ");
+        String query = "SELECT student_id FROM student WHERE first_name = ? AND last_name = ?";
+
+        try (PreparedStatement stmt = conn.prepareStatement(query)) {
+            stmt.setString(1, names[0]);
+            stmt.setString(2, names[1]);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt("student_id");
+            }
+        }
+
+        return -1; // Студент не найден
+    }
 }
