@@ -297,7 +297,6 @@ public class AuthScene {
         return root;
     }
 
-    // Метод для создания контента вкладки "Назначение студентов"
     private static VBox createStudentAssignmentTabContent(Connection conn) {
         VBox root = new VBox(10);
         root.setPadding(new Insets(20));
@@ -316,11 +315,13 @@ public class AuthScene {
         }
 
         ComboBox<String> groupBox = new ComboBox<>();
-        // Загрузка групп для назначения
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT group_number FROM \"group\"")) {
+        // Загрузка групп с названиями направлений
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT g.group_number, f.faculty_name FROM \"group\" g " +
+                        "INNER JOIN faculty f ON g.faculty = f.faculty_id")) {
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
-                groupBox.getItems().add("Группа " + rs.getInt("group_number"));
+                groupBox.getItems().add(rs.getString("faculty_name") + " №" + rs.getInt("group_number"));
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -342,16 +343,39 @@ public class AuthScene {
                 // Получаем id студента
                 int studentId = getStudentIdByName(selectedStudent, conn);
 
-                // Получаем номер группы
-                int groupNumber = Integer.parseInt(selectedGroup.split(" ")[1]);
+                // Парсим выбранную группу (формат: "Название направления №номер")
+                int lastSpaceIndex = selectedGroup.lastIndexOf(" №");
+                if (lastSpaceIndex == -1) {
+                    studentAssignmentStatus.setText("Неверный формат группы");
+                    return;
+                }
+
+                String facultyName = selectedGroup.substring(0, lastSpaceIndex);
+                int groupNumber;
+                try {
+                    groupNumber = Integer.parseInt(selectedGroup.substring(lastSpaceIndex + 2));
+                } catch (NumberFormatException ex) {
+                    studentAssignmentStatus.setText("Неверный номер группы");
+                    return;
+                }
 
                 // Назначаем студента в группу
                 try (PreparedStatement stmt = conn.prepareStatement(
-                        "UPDATE student SET group_id = (SELECT group_id FROM \"group\" WHERE group_number = ?) WHERE student_id = ?")) {
+                        "UPDATE student SET group_id = " +
+                                "(SELECT g.group_id FROM \"group\" g " +
+                                "INNER JOIN faculty f ON g.faculty = f.faculty_id " +
+                                "WHERE g.group_number = ? AND f.faculty_name = ?) " +
+                                "WHERE student_id = ?")) {
                     stmt.setInt(1, groupNumber);
-                    stmt.setInt(2, studentId);
-                    stmt.executeUpdate();
-                    studentAssignmentStatus.setText("Студент успешно назначен в группу " + groupNumber);
+                    stmt.setString(2, facultyName);
+                    stmt.setInt(3, studentId);
+                    int affectedRows = stmt.executeUpdate();
+
+                    if (affectedRows > 0) {
+                        studentAssignmentStatus.setText("Студент успешно назначен в группу " + facultyName + " №" + groupNumber);
+                    } else {
+                        studentAssignmentStatus.setText("Не удалось назначить студента в группу");
+                    }
                 }
             } catch (SQLException ex) {
                 studentAssignmentStatus.setText("Ошибка назначения студента: " + ex.getMessage());
@@ -361,7 +385,6 @@ public class AuthScene {
         root.getChildren().addAll(title, studentGroupBox, groupBox, assignStudentButton, studentAssignmentStatus);
         return root;
     }
-
     // Метод для создания контента вкладки "Назначение преподавателей"
     private static VBox createTeacherAssignmentTabContent(Connection conn) {
         VBox root = new VBox(10);
