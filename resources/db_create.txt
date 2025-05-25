@@ -3,7 +3,6 @@ create table student (
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
     middle_name TEXT,
-    group_number INT NOT NULL DEFAULT 1,
     unique (first_name, last_name, middle_name)
 );
 
@@ -20,27 +19,20 @@ create table teacher (
     unique (first_name, last_name, middle_name)
 );
 
-create table teacher_subject (
-    id int primary key generated always as identity,
-    teacher_id int references teacher(teacher_id),
-    subject_id int references subject(subject_id),
-    unique (teacher_id, subject_id)
-);
-
 create table pair_time (
     id int primary key generated always as identity,
     start_time time not null unique,
     end_time time not null unique
 );
 
-create table schedule (
-    schedule_id int primary key generated always as identity,
-    subject_id int references subject (subject_id),
-    teacher_id int references teacher (teacher_id),
-    day_of_week int not null check (day_of_week between 1 and 6),
-    pair_number int not null check (pair_number between 1 and 6)
-        references pair_time(id),
-    unique (group_id, subject_id, teacher_id, day_of_week, pair_number)
+CREATE TABLE schedule (
+    schedule_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    subject_id INT REFERENCES subject(subject_id),
+    teacher_id INT REFERENCES teacher(teacher_id),
+    day_of_week INT NOT NULL CHECK (day_of_week BETWEEN 1 AND 6),
+    pair_number INT NOT NULL CHECK (pair_number BETWEEN 1 AND 6) REFERENCES pair_time(id),
+    UNIQUE (day_of_week, pair_number),
+    UNIQUE (subject_id, teacher_id, day_of_week, pair_number)
 );
 
 create table lesson_instance (
@@ -80,3 +72,102 @@ create table teacher_user (
 
 insert into users(login, password, role)
 values ('admin', 'admin', 1);
+
+INSERT INTO pair_time (start_time, end_time) VALUES
+('08:00', '09:40'),
+('10:00', '11:40'),
+('12:00', '13:40'),
+('14:00', '15:40'),
+('16:00', '17:40'),
+('18:00', '19:40');
+
+INSERT INTO subject (subject_name) VALUES
+('Теория автоматического управления'),
+('Базы данных'),
+('Системный подход в разработке ПО');
+
+-- 1. Сначала создаём пользователей
+INSERT INTO users (login, password, role) VALUES
+('nesterov', 'nesterov', 2), -- Преподаватель
+('kravchenko', 'kravchenko', 2),
+('tsui', 'tsui', 3),         -- Студент
+('petrov', 'petrov', 3),
+('levanov', 'levanov', 3),
+('kraev', 'kraev', 3)
+ON CONFLICT (login) DO NOTHING;
+
+-- 2. Добавляем преподавателей
+INSERT INTO teacher (first_name, last_name, middle_name)
+SELECT 'Сергей', 'Нестеров', 'Александрович'
+WHERE NOT EXISTS (SELECT 1 FROM teacher WHERE first_name = 'Сергей' AND last_name = 'Нестеров');
+
+INSERT INTO teacher (first_name, last_name, middle_name)
+SELECT 'Виктор', 'Кравченко', 'Владимирович'
+WHERE NOT EXISTS (SELECT 1 FROM teacher WHERE first_name = 'Виктор' AND last_name = 'Кравченко');
+
+-- 3. Связываем пользователей с преподавателями
+INSERT INTO teacher_user (user_id, teacher_id)
+SELECT u.user_id, t.teacher_id
+FROM users u
+JOIN teacher t ON t.last_name = 'Нестеров' AND u.login = 'nesterov'
+WHERE NOT EXISTS (
+    SELECT 1 FROM teacher_user WHERE user_id = u.user_id AND teacher_id = t.teacher_id
+);
+
+INSERT INTO teacher_user (user_id, teacher_id)
+SELECT u.user_id, t.teacher_id
+FROM users u
+JOIN teacher t ON t.last_name = 'Кравченко' AND u.login = 'kravchenko'
+WHERE NOT EXISTS (
+    SELECT 1 FROM teacher_user WHERE user_id = u.user_id AND teacher_id = t.teacher_id
+);
+
+-- 4. Добавляем студентов
+INSERT INTO student (first_name, last_name, middle_name)
+SELECT 'Кирилл', 'Цой', 'Аркадьевич'
+WHERE NOT EXISTS (SELECT 1 FROM student WHERE first_name = 'Кирилл' AND last_name = 'Цой');
+
+INSERT INTO student (first_name, last_name, middle_name)
+SELECT 'Александр', 'Петров', 'Олегович'
+WHERE NOT EXISTS (SELECT 1 FROM student WHERE first_name = 'Александр' AND last_name = 'Петров');
+
+INSERT INTO student (first_name, last_name, middle_name)
+SELECT 'Владислав', 'Леванов', 'Сергеевич'
+WHERE NOT EXISTS (SELECT 1 FROM student WHERE first_name = 'Владислав' AND last_name = 'Леванов');
+
+INSERT INTO student (first_name, last_name, middle_name)
+SELECT 'Федор', 'Крайнов', 'Павлович'
+WHERE NOT EXISTS (SELECT 1 FROM student WHERE first_name = 'Федор' AND last_name = 'Крайнов');
+
+-- 5. Связываем пользователей со студентами
+INSERT INTO student_user (user_id, student_id)
+SELECT u.user_id, s.student_id
+FROM users u
+JOIN student s ON s.last_name = 'Цой' AND u.login = 'tsui'
+WHERE NOT EXISTS (
+    SELECT 1 FROM student_user WHERE user_id = u.user_id AND student_id = s.student_id
+);
+
+INSERT INTO student_user (user_id, student_id)
+SELECT u.user_id, s.student_id
+FROM users u
+JOIN student s ON s.last_name = 'Петров' AND u.login = 'petrov'
+WHERE NOT EXISTS (
+    SELECT 1 FROM student_user WHERE user_id = u.user_id AND student_id = s.student_id
+);
+
+INSERT INTO student_user (user_id, student_id)
+SELECT u.user_id, s.student_id
+FROM users u
+JOIN student s ON s.last_name = 'Леванов' AND u.login = 'levanov'
+WHERE NOT EXISTS (
+    SELECT 1 FROM student_user WHERE user_id = u.user_id AND student_id = s.student_id
+);
+
+INSERT INTO student_user (user_id, student_id)
+SELECT u.user_id, s.student_id
+FROM users u
+JOIN student s ON s.last_name = 'Крайнов' AND u.login = 'kraev'
+WHERE NOT EXISTS (
+    SELECT 1 FROM student_user WHERE user_id = u.user_id AND student_id = s.student_id
+);
