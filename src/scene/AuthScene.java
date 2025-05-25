@@ -5,10 +5,12 @@ import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
 import java.sql.*;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -24,6 +26,7 @@ public class AuthScene {
     public static void showLoginScene(Stage primaryStage, Connection conn) {
         VBox loginBox = new VBox(10);
         loginBox.setPadding(new Insets(20));
+        loginBox.setStyle("-fx-alignment: center;"); // Центрируем все элементы внутри VBox
 
         Label loginLabel = new Label("Вход");
         TextField loginField = new TextField();
@@ -35,6 +38,10 @@ public class AuthScene {
         Button loginButton = new Button("Войти");
         Button switchToRegister = new Button("Зарегистрироваться");
         Label loginMessage = new Label();
+
+        // Кнопки в строке и центрированы
+        HBox buttonsBox = new HBox(10, loginButton, switchToRegister);
+        buttonsBox.setStyle("-fx-alignment: center;");
 
         loginButton.setOnAction(e -> {
             String login = loginField.getText().trim();
@@ -65,7 +72,14 @@ public class AuthScene {
 
         switchToRegister.setOnAction(e -> showRegistrationScene(primaryStage, conn));
 
-        loginBox.getChildren().addAll(loginLabel, loginField, passwordField, loginButton, loginMessage, switchToRegister);
+        loginBox.getChildren().addAll(
+                loginLabel,
+                loginField,
+                passwordField,
+                buttonsBox,
+                loginMessage
+        );
+
         primaryStage.setScene(new Scene(loginBox, 400, 300));
     }
 
@@ -170,12 +184,6 @@ public class AuthScene {
 
         primaryStage.setScene(new Scene(registerBox, 400, 500));
     }
-    private record FacultyItem(int id, String name) {
-        @Override
-        public String toString() {
-            return name;
-        }
-    }
 
     public static void showAdminSceneWithGroupCreation(Stage primaryStage, Connection conn) {
         // Основной контейнер с вкладками
@@ -214,8 +222,8 @@ public class AuthScene {
         VBox root = new VBox(10);
         root.setPadding(new Insets(20));
 
-        Label title = new Label("Создание новой группы");
-
+        // Секция создания группы
+        Label groupTitle = new Label("Создание новой группы");
         ComboBox<String> facultyBox = new ComboBox<>();
         Map<String, Integer> facultyMap = new HashMap<>();
         try (PreparedStatement stmt = conn.prepareStatement("SELECT faculty_id, faculty_name FROM faculty")) {
@@ -287,14 +295,154 @@ public class AuthScene {
             }
         });
 
+        // Секция создания семестра
+        Label semesterTitle = new Label("Создание семестра");
+        DatePicker semesterStartDate = new DatePicker();
+        semesterStartDate.setPromptText("Дата начала семестра");
+
+        // ComboBox для выбора времени пары
+        ComboBox<Integer> pairTimeBox = new ComboBox<>();
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT id FROM pair_time")) {
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                pairTimeBox.getItems().add(rs.getInt("id"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        pairTimeBox.setPromptText("Номер пары");
+
+        // ComboBox для выбора дня недели для каждого предмета
+        Map<Integer, ComboBox<Integer>> subjectDayMap = new HashMap<>();
+        VBox subjectDayBox = new VBox(5);
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT subject_id, subject_name FROM subject")) {
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                int subjectId = rs.getInt("subject_id");
+                String subjectName = rs.getString("subject_name");
+                ComboBox<Integer> dayBox = new ComboBox<>();
+                dayBox.getItems().addAll(1, 2, 3, 4, 5, 6);
+                dayBox.setPromptText("День недели для " + subjectName);
+                subjectDayMap.put(subjectId, dayBox);
+                subjectDayBox.getChildren().add(new HBox(10, new Label(subjectName + ":"), dayBox));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        Button createSemesterButton = new Button("Начать семестр");
+        Label semesterStatus = new Label();
+
+        createSemesterButton.setOnAction(e -> {
+            LocalDate startDate = semesterStartDate.getValue();
+            Integer pairNumber = pairTimeBox.getValue();
+
+            if (startDate == null || pairNumber == null || subjectDayMap.values().stream().anyMatch(cb -> cb.getValue() == null)) {
+                semesterStatus.setText("Выберите дату начала, номер пары и дни для всех предметов.");
+                return;
+            }
+
+            try {
+                createSemesterSchedule(conn, startDate, pairNumber, subjectDayMap);
+                semesterStatus.setText("Расписание семестра успешно создано!");
+            } catch (SQLException ex) {
+                semesterStatus.setText("Ошибка создания расписания: " + ex.getMessage());
+            }
+        });
+
         // Верхняя часть
         VBox createGroupBox = new VBox(10,
-                title, facultyBox, nextGroupNumberLabel, createGroupButton, createStatus);
-        createGroupBox.setPadding(new Insets(0, 0, 10, 0));
+                groupTitle, facultyBox, nextGroupNumberLabel, createGroupButton, createStatus);
+        createGroupBox.setPadding(new Insets(0, 0, 20, 0));
 
-        root.getChildren().add(createGroupBox);
+        // Нижняя часть
+        VBox createSemesterBox = new VBox(10,
+                semesterTitle, semesterStartDate, pairTimeBox, subjectDayBox, createSemesterButton, semesterStatus);
+        createSemesterBox.setPadding(new Insets(20, 0, 0, 0));
+
+        root.getChildren().addAll(createGroupBox, createSemesterBox);
 
         return root;
+    }
+
+    private static void createSemesterSchedule(Connection conn, LocalDate startDate, int pairNumber, Map<Integer, ComboBox<Integer>> subjectDayMap) throws SQLException {
+        // Для каждой группы создаем расписание на 16 недель
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT group_id, faculty FROM \"group\"")) {
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                int groupId = rs.getInt("group_id");
+                int facultyId = rs.getInt("faculty");
+
+                // Получаем все предметы для данного факультета
+                try (PreparedStatement subjectStmt = conn.prepareStatement(
+                        "SELECT subject_id FROM faculty_subject WHERE faculty_id = ?")) {
+                    subjectStmt.setInt(1, facultyId);
+                    ResultSet subjectRs = subjectStmt.executeQuery();
+
+                    while (subjectRs.next()) {
+                        int subjectId = subjectRs.getInt("subject_id");
+                        Integer dayOfWeek = subjectDayMap.get(subjectId).getValue();
+
+                        if (dayOfWeek != null) {
+                            // Получаем всех преподавателей, назначенных на этот предмет
+                            try (PreparedStatement teacherStmt = conn.prepareStatement(
+                                    "SELECT teacher_id FROM teacher_subject WHERE subject_id = ?")) {
+                                teacherStmt.setInt(1, subjectId);
+                                ResultSet teacherRs = teacherStmt.executeQuery();
+
+                                if (teacherRs.next()) {
+                                    int teacherId = teacherRs.getInt("teacher_id");
+
+                                    // Создаем записи в таблице schedule
+                                    try (PreparedStatement scheduleStmt = conn.prepareStatement(
+                                            "INSERT INTO schedule (group_id, subject_id, teacher_id, day_of_week, pair_number) VALUES (?, ?, ?, ?, ?)")) {
+                                        scheduleStmt.setInt(1, groupId);
+                                        scheduleStmt.setInt(2, subjectId);
+                                        scheduleStmt.setInt(3, teacherId);
+                                        scheduleStmt.setInt(4, dayOfWeek);
+                                        scheduleStmt.setInt(5, pairNumber);
+                                        scheduleStmt.executeUpdate();
+                                    }
+
+                                    // Получаем только что созданный schedule_id
+                                    int scheduleId;
+                                    try (PreparedStatement getScheduleId = conn.prepareStatement(
+                                            "SELECT schedule_id FROM schedule WHERE group_id = ? AND subject_id = ? AND teacher_id = ? AND day_of_week = ? AND pair_number = ?")) {
+                                        getScheduleId.setInt(1, groupId);
+                                        getScheduleId.setInt(2, subjectId);
+                                        getScheduleId.setInt(3, teacherId);
+                                        getScheduleId.setInt(4, dayOfWeek);
+                                        getScheduleId.setInt(5, pairNumber);
+                                        ResultSet scheduleRs = getScheduleId.executeQuery();
+                                        scheduleRs.next();
+                                        scheduleId = scheduleRs.getInt("schedule_id");
+                                    }
+
+                                    // Создаем lesson_instance для каждой из 16 недель
+                                    LocalDate currentDate = startDate;
+                                    for (int i = 0; i < 16; i++) {
+                                        // Находим ближайший день недели, соответствующий выбранному дню
+                                        while (currentDate.getDayOfWeek().getValue() != dayOfWeek) {
+                                            currentDate = currentDate.plusDays(1);
+                                        }
+
+                                        try (PreparedStatement lessonStmt = conn.prepareStatement(
+                                                "INSERT INTO lesson_instance (schedule_id, lesson_date) VALUES (?, ?)")) {
+                                            lessonStmt.setInt(1, scheduleId);
+                                            lessonStmt.setDate(2, Date.valueOf(currentDate));
+                                            lessonStmt.executeUpdate();
+                                        }
+
+                                        currentDate = currentDate.plusWeeks(1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private static VBox createStudentAssignmentTabContent(Connection conn) {
@@ -385,6 +533,7 @@ public class AuthScene {
         root.getChildren().addAll(title, studentGroupBox, groupBox, assignStudentButton, studentAssignmentStatus);
         return root;
     }
+
     // Метод для создания контента вкладки "Назначение преподавателей"
     private static VBox createTeacherAssignmentTabContent(Connection conn) {
         VBox root = new VBox(10);
@@ -447,4 +596,10 @@ public class AuthScene {
         return root;
     }
 
+    private record FacultyItem(int id, String name) {
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
 }

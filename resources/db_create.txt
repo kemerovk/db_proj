@@ -1,22 +1,9 @@
-create table faculty (
-    faculty_id int primary key generated always as identity,
-    faculty_name text not null unique
-);
-
-create table "group" (
-    group_id int primary key generated always as identity,
-    faculty int not null references faculty(faculty_id),
-    group_number int not null default 1,
-    unique (faculty, group_number)
-);
-
 create table student (
-    student_id int primary key generated always as identity,
-    first_name text not null,
-    last_name text not null,
-    middle_name text,
-    group_id int references "group" (group_id),
-    faculty int references faculty (faculty_id),
+    student_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    middle_name TEXT,
+    group_number INT NOT NULL DEFAULT 1,
     unique (first_name, last_name, middle_name)
 );
 
@@ -33,19 +20,11 @@ create table teacher (
     unique (first_name, last_name, middle_name)
 );
 
-create table faculty_subject (
-    id int primary key generated always as identity,
-    faculty_id int references faculty(faculty_id),
-    subject_id int references subject(subject_id),
-    unique (faculty_id, subject_id)
-);
-
 create table teacher_subject (
     id int primary key generated always as identity,
     teacher_id int references teacher(teacher_id),
     subject_id int references subject(subject_id),
-    group_id int references "group"(group_id),
-    unique (teacher_id, subject_id, group_id)
+    unique (teacher_id, subject_id)
 );
 
 create table pair_time (
@@ -56,7 +35,6 @@ create table pair_time (
 
 create table schedule (
     schedule_id int primary key generated always as identity,
-    group_id int references "group" (group_id),
     subject_id int references subject (subject_id),
     teacher_id int references teacher (teacher_id),
     day_of_week int not null check (day_of_week between 1 and 6),
@@ -102,7 +80,3 @@ create table teacher_user (
 
 insert into users(login, password, role)
 values ('admin', 'admin', 1);
-
-insert into faculty (faculty_name)
-values ('Информационные системы и технологии'),
-       ('Системный анализ')
