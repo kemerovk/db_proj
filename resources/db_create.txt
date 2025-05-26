@@ -33,8 +33,7 @@ CREATE TABLE schedule (
     pair_number INT NOT NULL CHECK (pair_number BETWEEN 1 AND 6) REFERENCES pair_time(id),
 
     UNIQUE (day_of_week, pair_number),
-    UNIQUE (subject_id, teacher_id, day_of_week, pair_number),
-    UNIQUE (subject_id)
+    UNIQUE (subject_id, teacher_id, day_of_week, pair_number)
 );
 
 create table lesson_instance (
